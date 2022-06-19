@@ -1,0 +1,12 @@
+<html>
+  <head>
+    <link rel="preload" href="/jamgame_bg.wasm" as="fetch" type="application/wasm" crossorigin="">
+    <link rel="modulepreload" href="/jamgame.js">
+  </head>
+  <body>
+    <script type="module">
+      import init from '/jamgame.js';
+      init('/jamgame_bg.wasm');
+    </script>
+  </body>
+</html>

@@ -105,6 +105,7 @@ pub enum Action {
 pub struct Inputs {
     just_pressed: HashSet<Action>,
     pressed: HashSet<Action>,
+    qwerty: bool,
 }
 
 pub(crate) fn cam_movement(
@@ -152,12 +153,19 @@ pub(crate) fn input_mapping(
 ) {
     inputs.just_pressed.clear();
 
+    let is_wasm = cfg!(target_arch = "wasm32");
+
     for v in keyboard_input_events.iter() {
-        let action = match v.scan_code {
-            17 => Action::CamUp,
-            31 => Action::CamDown,
-            32 => Action::CamRight,
-            30 => Action::CamLeft,
+        let kc = if let Some(x) = v.key_code {
+            x
+        } else {
+            continue;
+        };
+        let action = match (inputs.qwerty ^ is_wasm, kc) {
+            (false, KeyCode::Z) | (true, KeyCode::W) => Action::CamUp,
+            (_, KeyCode::S) => Action::CamDown,
+            (_, KeyCode::D) => Action::CamRight,
+            (false, KeyCode::Q) | (true, KeyCode::A) => Action::CamLeft,
             _ => continue,
         };
 
