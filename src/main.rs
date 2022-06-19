@@ -35,5 +35,7 @@ fn main() {
         .add_system(ui::ui_example)
         .add_system(entities::dogchick_ai)
         .add_system(entities::speedbob)
+        .add_system(entities::wolf_ai)
+        .add_system(entities::wander_update)
         .run();
 }
