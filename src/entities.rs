@@ -84,10 +84,39 @@ const FOREST: Rect<f32> = Rect {
     bottom: 140.0,
 };
 
+#[derive(Component, Default)]
+pub struct DogChickAnim {
+    t: f32,
+    w: f32,
+}
+
+pub fn dogchickanim_update(
+    mut commands: Commands,
+    asset_server: Res<AssetServer>,
+    time: Res<Time>,
+    mut qry: Query<(Entity, &mut Transform, &mut DogChickAnim)>,
+) {
+    for (ent, mut trans, mut anim) in qry.iter_mut() {
+        anim.w += time.delta_seconds();
+
+        trans.rotation =
+            Quat::from_axis_angle(Vec3::Z, 100.0 * anim.t.powi(2) * time.delta_seconds())
+                * trans.rotation;
+        trans.scale.x = 1.0 - anim.t * 0.8;
+        trans.scale.y = 1.0 - anim.t * 0.8;
+
+        anim.t += time.delta_seconds();
+
+        if anim.t >= 1.0 {
+            spawn_dogchick(&mut commands, &asset_server, trans.translation);
+            commands.entity(ent).despawn_recursive();
+        }
+    }
+}
+
 pub fn collision_avoidance(
     mut commands: Commands,
     time: Res<Time>,
-    asset_server: Res<AssetServer>,
     mut toavoid: Query<(
         Entity,
         &mut CollisionAvoid,
@@ -117,56 +146,28 @@ pub fn collision_avoidance(
                 if (a.3.is_some() == b.4.is_some()) && !looka.merged && !lookb.merged {
                     looka.merged = true;
                     lookb.merged = true;
-                    commands.entity(a.0).despawn_recursive();
-                    commands.entity(b.0).despawn_recursive();
 
                     let dogchickpos = a.2.translation + vec3(diff.x, diff.y, 0.0) / 2.0;
 
-                    let offdir = if lookb.spawn_point.x > 0.0 {
-                        -500.0
-                    } else {
-                        500.0
-                    };
-
-                    let sp = lookb.spawn_point + vec2(offdir, 0.0);
-
-                    let dogchick = commands
+                    let e = commands
                         .spawn()
-                        .insert(AiResult {
-                            target_speed: 10.0,
-                            target_dir: vec2(0.0, 0.0),
-                        })
-                        .insert(Looker {
-                            spawn_point: sp,
-                            spawn_door: lookb.spawn_door + vec2(offdir, 0.0),
-                            state: LookerState::HappyInside,
-                            location: LookerLocation::Outside,
-                            merged: true,
-                        })
-                        .insert(CollisionAvoid::default())
-                        .insert(Wander {
-                            randobjective: Some(sp),
-                            confined_within: DOGCHICK_ENCLOT,
-                        })
-                        .insert(Speed(0.0))
-                        .insert(DogChick)
-                        .insert_bundle(SpriteBundle {
-                            transform: Transform::default()
-                                .with_translation(dogchickpos)
-                                .with_scale(vec3(0.6, 0.6, 1.0)),
-                            texture: asset_server.load("shadow.png"),
-                            ..Default::default()
+                        .insert(DogChickAnim::default())
+                        .insert_bundle(TransformBundle {
+                            local: Transform::default().with_translation(dogchickpos),
+                            global: Default::default(),
                         })
                         .id();
+
                     commands
-                        .spawn()
-                        .insert(Parent(dogchick))
-                        .insert(BobAnim(fastrand::f32() * 32.0))
-                        .insert_bundle(SpriteBundle {
-                            transform: Transform::default().with_scale(Vec3::new(1.0, 1.0, 1.0)),
-                            texture: asset_server.load("dogchick.png"),
-                            ..Default::default()
-                        });
+                        .entity(a.0)
+                        .insert(Parent(e))
+                        .remove::<Looker>()
+                        .insert(a.2.with_translation(a.2.translation - dogchickpos));
+                    commands
+                        .entity(b.0)
+                        .insert(Parent(e))
+                        .remove::<Looker>()
+                        .insert(b.2.with_translation(b.2.translation - dogchickpos));
                 }
             }
         }
@@ -190,6 +191,53 @@ pub fn collision_avoidance(
             }
         }
     }
+}
+
+fn spawn_dogchick(commands: &mut Commands, asset_server: &Res<AssetServer>, pos: Vec3) {
+    let x = DOGCHICK_ENCLOT.left + fastrand::f32() * (DOGCHICK_ENCLOT.right - DOGCHICK_ENCLOT.left);
+    let y =
+        DOGCHICK_ENCLOT.bottom + fastrand::f32() * (DOGCHICK_ENCLOT.top - DOGCHICK_ENCLOT.bottom);
+
+    let door = (fastrand::f32() - 0.5) * 100.0;
+
+    let sp = vec2(x, y);
+    let dogchick = commands
+        .spawn()
+        .insert(AiResult {
+            target_speed: 10.0,
+            target_dir: vec2(0.0, 0.0),
+        })
+        .insert(Looker {
+            spawn_point: sp,
+            spawn_door: vec2(door, -650.0),
+            state: LookerState::HappyInside,
+            location: LookerLocation::Outside,
+            merged: true,
+        })
+        .insert(CollisionAvoid::default())
+        .insert(Wander {
+            randobjective: Some(sp),
+            confined_within: DOGCHICK_ENCLOT,
+        })
+        .insert(Speed(0.0))
+        .insert(DogChick)
+        .insert_bundle(SpriteBundle {
+            transform: Transform::default()
+                .with_translation(pos)
+                .with_scale(vec3(0.6, 0.6, 1.0)),
+            texture: asset_server.load("shadow.png"),
+            ..Default::default()
+        })
+        .id();
+    commands
+        .spawn()
+        .insert(Parent(dogchick))
+        .insert(BobAnim(fastrand::f32() * 32.0))
+        .insert_bundle(SpriteBundle {
+            transform: Transform::default().with_scale(Vec3::new(1.0, 1.0, 1.0)),
+            texture: asset_server.load("dogchick.png"),
+            ..Default::default()
+        });
 }
 
 pub fn wolf_ai(

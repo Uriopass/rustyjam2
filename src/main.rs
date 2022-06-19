@@ -37,5 +37,6 @@ fn main() {
         .add_system(entities::speedbob)
         .add_system(entities::wolf_ai)
         .add_system(entities::wander_update)
+        .add_system(entities::dogchickanim_update)
         .run();
 }
