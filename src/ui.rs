@@ -37,12 +37,15 @@ pub(crate) fn ui_example(
             });
     }
 
-    egui::Window::new("Debug")
-        .title_bar(false)
-        .resizable(false)
-        .collapsible(false)
-        .anchor(egui::Align2::LEFT_TOP, (0.0, 0.0))
-        .show(egui_context.ctx_mut(), |ui| {
-            ui.label(format!("{} {}", proj.0.x as i64, proj.0.y as i64));
-        });
+    #[cfg(debug_assertions)]
+    {
+        egui::Window::new("Debug")
+            .title_bar(false)
+            .resizable(false)
+            .collapsible(false)
+            .anchor(egui::Align2::LEFT_TOP, (0.0, 0.0))
+            .show(egui_context.ctx_mut(), |ui| {
+                ui.label(format!("{} {}", proj.0.x as i64, proj.0.y as i64));
+            });
+    }
 }

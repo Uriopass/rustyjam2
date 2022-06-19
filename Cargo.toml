@@ -6,10 +6,25 @@ license = "MIT"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-bevy = { version = "0.7", features=["jpeg"] }
 bevy_egui = "0.14"
 bevy_prototype_lyon = "0.5.0"
 fastrand = "1.7.0"
 
+[dependencies.bevy]
+version = "0.7.0"
+default-features = false
+features = [
+    "bevy_sprite",
+    "bevy_render",
+    "bevy_winit",
+    "x11",
+    "jpeg",
+    "png"
+]
+
 [profile.dev.package."*"]
 opt-level = 3
+
+[profile.release]
+strip = "none"
+lto = "thin"

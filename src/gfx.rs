@@ -13,7 +13,7 @@ pub(crate) fn gfx_setup(mut commands: Commands, asset_server: Res<AssetServer>) 
 
     commands.spawn().insert_bundle(SpriteBundle {
         sprite: Sprite {
-            custom_size: Some(Vec2::new(10000.0, 10000.0)),
+            custom_size: Some(Vec2::new(5000.0, 5000.0)),
             ..Default::default()
         },
         transform: Transform::default()
