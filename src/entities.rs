@@ -172,8 +172,10 @@ pub fn collision_avoidance(
             }
         }
 
-        if b.7.is_some() && a.6.is_some() && dist2 < 150.0 * 150.0 {
-            if let Some(mut looka) = a.6 {
+        if ((b.7.is_some() && a.6.is_some()) || (b.6.is_some() && a.7.is_some()))
+            && dist2 < 150.0 * 150.0
+        {
+            if let Some(mut looka) = a.6.or(b.6) {
                 match looka.state {
                     LookerState::Happy => {
                         looka.state = LookerState::Scared {
