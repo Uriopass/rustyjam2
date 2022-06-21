@@ -124,7 +124,7 @@ pub fn collision_avoidance(
     time: Res<Time>,
     tree: Res<NNTree>,
     mut toavoid: Query<
-        (&mut CollisionAvoid, &Transform),
+        (Entity, &mut CollisionAvoid, &Transform),
         Or<(With<Wolf>, With<Dog>, With<Chicken>, With<DogChick>)>,
     >,
     mut lookers: Query<(Entity, &Transform), Or<(With<Dog>, With<Chicken>)>>,
@@ -134,14 +134,14 @@ pub fn collision_avoidance(
     mut islooker: Query<&mut Looker>,
     transqry: Query<&Transform>,
 ) {
-    for (mut avoid, trans) in toavoid.iter_mut() {
+    for (e, mut avoid, trans) in toavoid.iter_mut() {
         avoid.getaway = Vec2::ZERO;
 
-        for (pos, _) in tree.within_distance(trans.translation, 20.0) {
+        for (pos, e2) in tree.within_distance(trans.translation, 20.0) {
             let diff = pos.xy() - trans.translation.xy();
             let dist2 = diff.length_squared();
 
-            if dist2 < f32::EPSILON {
+            if dist2 < f32::EPSILON || e == e2 {
                 continue;
             }
 
