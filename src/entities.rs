@@ -2,6 +2,7 @@ use crate::gfx::MouseProj;
 use crate::{Children, Entity, Parent, Query, Time, Vec2, Vec3, Without};
 use bevy::math::{vec2, vec3, Rect, Vec3Swizzles};
 use bevy::prelude::*;
+use bevy_spatial::{KDTreeAccess2D, SpatialAccess};
 
 #[derive(Component)]
 pub struct Wolf {
@@ -16,6 +17,11 @@ pub struct Dog;
 
 #[derive(Component)]
 pub struct DogChick;
+
+#[derive(Component)]
+pub struct TrackedByKDTree;
+
+type NNTree = KDTreeAccess2D<TrackedByKDTree>; // type alias for later
 
 #[derive(Copy, Clone)]
 pub enum LookerLocation {
@@ -37,7 +43,6 @@ pub struct Looker {
     spawn_door: Vec2,
     state: LookerState,
     location: LookerLocation,
-    merged: bool,
 }
 
 #[derive(Default, Component)]
@@ -117,78 +122,96 @@ pub fn dogchickanim_update(
 pub fn collision_avoidance(
     mut commands: Commands,
     time: Res<Time>,
-    mut toavoid: Query<(
-        Entity,
-        &mut CollisionAvoid,
-        &Transform,
-        Option<&Chicken>,
-        Option<&Dog>,
-        Option<&DogChick>,
-        Option<&mut Looker>,
-        Option<&Wolf>,
-    )>,
+    tree: Res<NNTree>,
+    mut toavoid: Query<
+        (&mut CollisionAvoid, &Transform),
+        Or<(With<Wolf>, With<Dog>, With<Chicken>, With<DogChick>)>,
+    >,
+    mut lookers: Query<(Entity, &Transform), Or<(With<Dog>, With<Chicken>)>>,
+    wolved: Query<&Transform, With<Wolf>>,
+    isdog: Query<&Dog>,
+    ischick: Query<&Chicken>,
+    mut islooker: Query<&mut Looker>,
+    transqry: Query<&Transform>,
 ) {
-    for (_, mut avoid, _, _, _, _, _, _) in toavoid.iter_mut() {
+    for (mut avoid, trans) in toavoid.iter_mut() {
         avoid.getaway = Vec2::ZERO;
+
+        for (pos, _) in tree.within_distance(trans.translation, 20.0) {
+            let diff = pos.xy() - trans.translation.xy();
+            let dist2 = diff.length_squared();
+
+            if dist2 < f32::EPSILON {
+                continue;
+            }
+
+            let force = 10.0 * diff / dist2;
+            avoid.getaway -= force;
+        }
     }
 
-    let mut combinaisons = toavoid.iter_combinations_mut::<2>();
-    while let Some([mut a, mut b]) = combinaisons.fetch_next() {
-        let diff = b.2.translation.xy() - a.2.translation.xy();
-        let dist2 = diff.length_squared();
+    let mut merged = vec![];
+    for (e, trans) in lookers.iter_mut() {
+        for (pos, e2) in tree.within_distance(trans.translation, 20.0) {
+            if !merged.contains(&e)
+                && !merged.contains(&e2)
+                && (isdog.contains(e) && ischick.contains(e2)
+                    || isdog.contains(e2) && ischick.contains(e))
+            {
+                merged.push(e);
+                merged.push(e2);
 
-        if dist2 < 20.0 * 20.0 {
-            let force = 10.0 * diff / dist2;
-            a.1.getaway -= force;
-            b.1.getaway += force;
+                let dogchickpos = (trans.translation + pos) / 2.0;
 
-            if let Some((looka, lookb)) = a.6.as_mut().zip(b.6.as_mut()) {
-                if (a.3.is_some() == b.4.is_some()) && !looka.merged && !lookb.merged {
-                    looka.merged = true;
-                    lookb.merged = true;
+                let anim = commands
+                    .spawn()
+                    .insert(DogChickAnim::default())
+                    .insert_bundle(TransformBundle {
+                        local: Transform::default().with_translation(dogchickpos),
+                        global: Default::default(),
+                    })
+                    .id();
 
-                    let dogchickpos = a.2.translation + vec3(diff.x, diff.y, 0.0) / 2.0;
-
-                    let e = commands
-                        .spawn()
-                        .insert(DogChickAnim::default())
-                        .insert_bundle(TransformBundle {
-                            local: Transform::default().with_translation(dogchickpos),
-                            global: Default::default(),
-                        })
-                        .id();
-
-                    commands
-                        .entity(a.0)
-                        .insert(Parent(e))
-                        .remove::<Looker>()
-                        .insert(a.2.with_translation(a.2.translation - dogchickpos));
-                    commands
-                        .entity(b.0)
-                        .insert(Parent(e))
-                        .remove::<Looker>()
-                        .insert(b.2.with_translation(b.2.translation - dogchickpos));
-                }
+                commands
+                    .entity(e)
+                    .insert(Parent(anim))
+                    .remove::<Looker>()
+                    .remove::<Dog>()
+                    .remove::<Chicken>()
+                    .insert(trans.with_translation(trans.translation - dogchickpos));
+                commands
+                    .entity(e2)
+                    .insert(Parent(anim))
+                    .remove::<Looker>()
+                    .remove::<Dog>()
+                    .remove::<Chicken>()
+                    .insert(
+                        transqry
+                            .get(e2)
+                            .unwrap()
+                            .with_translation(pos - dogchickpos),
+                    );
             }
         }
+    }
 
-        if ((b.7.is_some() && a.6.is_some()) || (b.6.is_some() && a.7.is_some()))
-            && dist2 < 150.0 * 150.0
-        {
-            if let Some(mut looka) = a.6.or(b.6) {
-                match looka.state {
-                    LookerState::Happy => {
-                        looka.state = LookerState::Scared {
+    for trans in wolved.iter() {
+        for (_, e) in tree.within_distance(trans.translation, 150.0) {
+            if let Ok(mut l) = islooker.get_mut(e) {
+                use LookerState::*;
+                match l.state {
+                    Happy => {
+                        l.state = Scared {
                             until: time.seconds_since_startup() + 10.0,
                         }
                     }
-                    LookerState::HappyInside => {
-                        looka.state = LookerState::ScaredInside {
+                    HappyInside => {
+                        l.state = ScaredInside {
                             until: time.seconds_since_startup() + 10.0,
                         }
                     }
-                    LookerState::Scared { .. } => {}
-                    LookerState::ScaredInside { .. } => {}
+                    Scared { .. } => {}
+                    ScaredInside { .. } => {}
                 }
             }
         }
@@ -214,7 +237,6 @@ fn spawn_dogchick(commands: &mut Commands, asset_server: &Res<AssetServer>, pos:
             spawn_door: vec2(door, -650.0),
             state: LookerState::HappyInside,
             location: LookerLocation::Outside,
-            merged: true,
         })
         .insert(CollisionAvoid::default())
         .insert(Wander {
@@ -222,6 +244,7 @@ fn spawn_dogchick(commands: &mut Commands, asset_server: &Res<AssetServer>, pos:
             confined_within: DOGCHICK_ENCLOT,
         })
         .insert(Speed(0.0))
+        .insert(TrackedByKDTree)
         .insert(DogChick)
         .insert_bundle(SpriteBundle {
             transform: Transform::default()
@@ -401,7 +424,7 @@ pub fn dogchick_ai(
         trans.translation.x += off.x;
         trans.translation.y += off.y;
 
-        speed.0 += (res.target_speed - speed.0).min(50.0 * time.delta_seconds());
+        speed.0 += (res.target_speed - speed.0).min(100.0 * time.delta_seconds());
     }
 }
 
@@ -447,6 +470,7 @@ pub fn start_game(mut commands: Commands, asset_server: Res<AssetServer>) {
                 texture: asset_server.load("shadow.png"),
                 ..Default::default()
             })
+            .insert(TrackedByKDTree)
             .id();
         commands
             .spawn()
@@ -459,7 +483,7 @@ pub fn start_game(mut commands: Commands, asset_server: Res<AssetServer>) {
             });
     }
 
-    for _ in 0..50 {
+    for _ in 0..100 {
         let x = -500.0 + (-0.5 + fastrand::f32()) * 300.0;
         let y = fastrand::f32() * 300.0 - 1000.0;
 
@@ -477,13 +501,13 @@ pub fn start_game(mut commands: Commands, asset_server: Res<AssetServer>) {
                 spawn_door: vec2(-500.0 + 100.0 * (fastrand::f32() - 0.5), -650.0),
                 state: LookerState::Happy,
                 location: LookerLocation::Inside,
-                merged: false,
             })
             .insert(CollisionAvoid::default())
             .insert(Wander {
                 randobjective: None,
                 confined_within: OUTSIDE,
             })
+            .insert(TrackedByKDTree)
             .insert(AiResult {
                 target_speed: 10.0,
                 target_dir: vec2(0.0, 0.0),
@@ -503,7 +527,7 @@ pub fn start_game(mut commands: Commands, asset_server: Res<AssetServer>) {
             });
     }
 
-    for _ in 0..50 {
+    for _ in 0..100 {
         let x = 500.0 + (-0.5 + fastrand::f32()) * 300.0;
         let y = fastrand::f32() * 300.0 - 1000.0;
 
@@ -521,13 +545,13 @@ pub fn start_game(mut commands: Commands, asset_server: Res<AssetServer>) {
                 spawn_door: vec2(500.0 + 100.0 * (fastrand::f32() - 0.5), -650.0),
                 state: LookerState::Happy,
                 location: LookerLocation::Inside,
-                merged: false,
             })
             .insert(CollisionAvoid::default())
             .insert(Wander {
                 randobjective: None,
                 confined_within: OUTSIDE,
             })
+            .insert(TrackedByKDTree)
             .insert(AiResult {
                 target_speed: 10.0,
                 target_dir: vec2(0.0, 0.0),

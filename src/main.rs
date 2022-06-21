@@ -2,11 +2,13 @@ mod entities;
 mod gfx;
 mod ui;
 
+use crate::entities::TrackedByKDTree;
 use crate::gfx::Inputs;
 use crate::ui::GameState;
 use bevy::prelude::*;
 use bevy_egui::EguiPlugin;
 use bevy_prototype_lyon::prelude::ShapePlugin;
+use bevy_spatial::KDTreePlugin2D;
 use entities::start_game;
 
 fn main() {
@@ -19,6 +21,7 @@ fn main() {
         .add_plugins(DefaultPlugins)
         .add_plugin(EguiPlugin)
         .add_plugin(ShapePlugin)
+        .add_plugin(KDTreePlugin2D::<TrackedByKDTree>::default())
         .add_startup_system(ui::set_style)
         .add_startup_system(gfx::gfx_setup)
         .add_startup_system(
