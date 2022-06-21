@@ -302,7 +302,7 @@ pub fn wolf_ai(
             Some(x)
                 if x.distance(pos) < 600.0 && wolf.tired_until < time.seconds_since_startup() =>
             {
-                max_speed = 70.0;
+                max_speed = 100.0;
                 x
             }
             _ => {
@@ -329,7 +329,7 @@ pub fn wolf_ai(
         trans.translation.x += off.x;
         trans.translation.y += off.y;
 
-        speed.0 += (res.target_speed - speed.0).min(50.0 * time.delta_seconds());
+        speed.0 += (res.target_speed - speed.0).min(100.0 * time.delta_seconds());
     }
 }
 
@@ -393,8 +393,8 @@ pub fn dogchick_ai(
             (Inside, Happy) | (Outside, HappyInside) => looker.spawn_door,
             (Inside, Scared { .. } | ScaredInside { .. }) => looker.spawn_point,
             (Outside, Scared { .. } | ScaredInside { .. }) => looker.spawn_door,
-            (Outside, Happy) if inp.0.distance(pos) < 110.0 => {
-                max_speed = 120.0;
+            (Outside, Happy) if inp.0.distance(pos) < 80.0 => {
+                max_speed = 150.0;
                 let mut obj = inp.0;
                 if obj.y < -630.0 {
                     obj.y = -630.0;
@@ -415,7 +415,7 @@ pub fn dogchick_ai(
 
         let to_obj = objective - pos;
 
-        res.target_speed = max_speed.min(0.3 * to_obj.length_squared());
+        res.target_speed = max_speed.min(0.8 * to_obj.length_squared());
         res.target_dir = to_obj.normalize_or_zero();
 
         let off = speed.0
