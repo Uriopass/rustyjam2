@@ -111,6 +111,7 @@ pub struct Inputs {
 pub(crate) fn cam_movement(
     time: Res<Time>,
     inp: Res<Inputs>,
+    windows: Res<Windows>,
     mut cam: Query<&mut Transform, With<Camera>>,
 ) {
     let mut cam = cam.single_mut();
@@ -139,8 +140,14 @@ pub(crate) fn cam_movement(
         cam.scale.y *= 1.0 / ZOOM_AMT;
     }
 
+    let mut h = 0.0;
+
+    if let Some(wsize) = windows.get_primary() {
+        h = wsize.height();
+    }
+
     cam.translation.x = cam.translation.x.clamp(-1000.0, 1000.0);
-    cam.translation.y = cam.translation.y.clamp(-1000.0, 1000.0);
+    cam.translation.y = cam.translation.y.clamp(-1100.0 + h * 0.5, 600.0 - h * 0.5);
 
     cam.scale.x = cam.scale.x.clamp(0.01, 2.0);
     cam.scale.y = cam.scale.y.clamp(0.01, 2.0);
