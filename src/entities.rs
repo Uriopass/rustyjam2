@@ -2,7 +2,15 @@ use crate::gfx::MouseProj;
 use crate::{Children, Entity, Parent, Query, Time, Vec2, Vec3, Without};
 use bevy::math::{vec2, vec3, Rect, Vec3Swizzles};
 use bevy::prelude::*;
+use bevy_kira_audio::AudioChannel;
 use bevy_spatial::{KDTreeAccess2D, SpatialAccess};
+use std::collections::HashSet;
+
+const HAND_SIZE: f32 = 80.0;
+
+pub struct Score {
+    score: i64,
+}
 
 #[derive(Component)]
 pub struct Wolf {
@@ -66,7 +74,9 @@ pub struct AiResult {
 pub struct Speed(pub f32);
 
 #[derive(Component)]
-pub struct BobAnim(pub f32);
+pub struct BobAnim {
+    pub anim: f32,
+}
 
 const OUTSIDE: Rect<f32> = Rect {
     left: -1000.0,
@@ -133,6 +143,92 @@ pub fn despawnin(
     }
 }
 
+pub struct ChickenSound;
+pub struct MergeSound;
+pub struct ChickenScaredSound;
+pub struct DogScaredSound;
+pub struct DogSound;
+
+#[derive(Default)]
+pub struct SoundState {
+    new_scared_chicken: bool,
+    new_scared_dog: bool,
+
+    hand_state_chick: HashSet<Entity>,
+    hand_state_dog: HashSet<Entity>,
+}
+
+pub fn sound_update(
+    time: Res<Time>,
+    hand: Res<MouseProj>,
+    mut state: ResMut<SoundState>,
+    asset_server: Res<AssetServer>,
+    chicken: Res<AudioChannel<ChickenSound>>,
+    chickenscared: Res<AudioChannel<ChickenScaredSound>>,
+    dogscared: Res<AudioChannel<DogScaredSound>>,
+    dogssound: Res<AudioChannel<DogSound>>,
+    chicks: Query<(Entity, &Transform, &Looker), With<Chicken>>,
+    dogs: Query<(Entity, &Transform, &Looker), With<Dog>>,
+) {
+    if state.new_scared_chicken {
+        chickenscared.stop();
+        chickenscared.resume();
+        chickenscared.play(asset_server.load("scared_chicken.ogg"));
+        state.new_scared_chicken = false;
+    }
+
+    if state.new_scared_dog {
+        dogscared.stop();
+        dogscared.resume();
+        dogscared.play(asset_server.load("scared_dog.ogg"));
+        state.new_scared_dog = false;
+    }
+    let mut already = false;
+
+    let mut newset = HashSet::new();
+    for (ent, trans, chick) in chicks.iter() {
+        if matches!(chick.location, LookerLocation::Outside)
+            && matches!(chick.state, LookerState::Happy)
+            && trans.translation.xy().distance(hand.0) < HAND_SIZE
+        {
+            newset.insert(ent);
+            if !already {
+                if state.hand_state_chick.insert(ent) {
+                    already = true;
+                    //chicken.stop();
+                    //chicken.resume();
+                    chicken.play(asset_server.load("chicken1.ogg"));
+                    chicken.set_playback_rate(fastrand::f32() * 0.3 + 1.0);
+                }
+            }
+        }
+    }
+    state.hand_state_chick = newset;
+
+    let mut newset = HashSet::new();
+
+    let mut already = false;
+
+    for (ent, trans, dog) in dogs.iter() {
+        if matches!(dog.location, LookerLocation::Outside)
+            && matches!(dog.state, LookerState::Happy)
+            && trans.translation.xy().distance(hand.0) < HAND_SIZE
+        {
+            newset.insert(ent);
+            if !already {
+                if state.hand_state_dog.insert(ent) {
+                    already = true;
+                    //dogssound.stop();
+                    //dogssound.resume();
+                    dogssound.play(asset_server.load("dogbark1.ogg"));
+                    dogssound.set_playback_rate(fastrand::f32() * 0.3 + 1.0)
+                }
+            }
+        }
+    }
+    state.hand_state_dog = newset;
+}
+
 pub fn dogchickanim_update(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
@@ -161,6 +257,8 @@ pub fn collision_avoidance(
     mut commands: Commands,
     time: Res<Time>,
     tree: Res<NNTree>,
+    mergesound: Res<AudioChannel<MergeSound>>,
+    mut soundstate: ResMut<SoundState>,
     asset_server: Res<AssetServer>,
     mut toavoid: Query<
         (Entity, &mut CollisionAvoid, &Transform),
@@ -198,6 +296,7 @@ pub fn collision_avoidance(
                 && (isdog.contains(e) && ischick.contains(e2)
                     || isdog.contains(e2) && ischick.contains(e))
             {
+                mergesound.play(asset_server.load("merge.ogg"));
                 merged.push(e);
                 merged.push(e2);
 
@@ -244,6 +343,12 @@ pub fn collision_avoidance(
                         l.state = Scared {
                             until: time.seconds_since_startup() + 10.0,
                         };
+
+                        if ischick.contains(e) {
+                            soundstate.new_scared_chicken = true;
+                        } else {
+                            soundstate.new_scared_dog = true;
+                        }
 
                         let y = if ischick.contains(e) { 30.0 } else { 23.0 };
                         let x = if ischick.contains(e) { -20.0 } else { -20.0 };
@@ -315,7 +420,9 @@ fn spawn_dogchick(commands: &mut Commands, asset_server: &Res<AssetServer>, pos:
     commands
         .spawn()
         .insert(Parent(dogchick))
-        .insert(BobAnim(fastrand::f32() * 32.0))
+        .insert(BobAnim {
+            anim: fastrand::f32() * 32.0,
+        })
         .insert_bundle(SpriteBundle {
             transform: Transform::default().with_scale(Vec3::new(1.0, 1.0, 1.0)),
             texture: asset_server.load("dogchick.png"),
@@ -451,7 +558,7 @@ pub fn dogchick_ai(
             (Inside, Happy) | (Outside, HappyInside) => looker.spawn_door,
             (Inside, Scared { .. } | ScaredInside { .. }) => looker.spawn_point,
             (Outside, Scared { .. } | ScaredInside { .. }) => looker.spawn_door,
-            (Outside, Happy) if inp.0.distance(pos) < 80.0 => {
+            (Outside, Happy) if inp.0.distance(pos) < HAND_SIZE => {
                 max_speed = 150.0;
                 let mut obj = inp.0;
                 if obj.y < -630.0 {
@@ -497,8 +604,8 @@ pub fn speedbob(
                 Ok(x) => x,
                 Err(_) => continue,
             };
-            bobanim.0 += speed.0 * time.delta_seconds() * 0.3;
-            trans.translation.y = bobanim.0.cos() * 6.0;
+            bobanim.anim += speed.0 * time.delta_seconds() * 0.3;
+            trans.translation.y = bobanim.anim.cos() * 6.0;
         }
         trans.scale.x = if (airesult.target_dir.x > 0.0) != (trans.scale.x < 0.0) {
             -trans.scale.x
@@ -509,7 +616,7 @@ pub fn speedbob(
 }
 
 pub fn start_game(mut commands: Commands, asset_server: Res<AssetServer>) {
-    for _ in 0..200 {
+    for _ in 0..10 {
         let x = (-0.5 + fastrand::f32()) * 1000.0;
         let y = fastrand::f32() * 200.0 + 300.0;
 
@@ -536,7 +643,9 @@ pub fn start_game(mut commands: Commands, asset_server: Res<AssetServer>) {
         commands
             .spawn()
             .insert(Parent(wolf))
-            .insert(BobAnim(fastrand::f32() * 32.0))
+            .insert(BobAnim {
+                anim: fastrand::f32() * 32.0,
+            })
             .insert_bundle(SpriteBundle {
                 transform: Transform::default().with_scale(Vec3::new(1.0, 1.0, 1.0)),
                 texture: asset_server.load("wolf.png"),
@@ -544,7 +653,7 @@ pub fn start_game(mut commands: Commands, asset_server: Res<AssetServer>) {
             });
     }
 
-    for _ in 0..200 {
+    for _ in 0..100 {
         let x = -500.0 + (-0.5 + fastrand::f32()) * 300.0;
         let y = fastrand::f32() * 300.0 - 1000.0;
 
@@ -580,7 +689,9 @@ pub fn start_game(mut commands: Commands, asset_server: Res<AssetServer>) {
         commands
             .spawn()
             .insert(Parent(dog))
-            .insert(BobAnim(fastrand::f32() * 32.0))
+            .insert(BobAnim {
+                anim: fastrand::f32() * 32.0,
+            })
             .insert_bundle(SpriteBundle {
                 transform: Transform::default(),
                 texture: asset_server.load("dog.png"),
@@ -588,7 +699,7 @@ pub fn start_game(mut commands: Commands, asset_server: Res<AssetServer>) {
             });
     }
 
-    for _ in 0..200 {
+    for _ in 0..100 {
         let x = 500.0 + (-0.5 + fastrand::f32()) * 300.0;
         let y = fastrand::f32() * 300.0 - 1000.0;
 
@@ -624,7 +735,9 @@ pub fn start_game(mut commands: Commands, asset_server: Res<AssetServer>) {
         commands
             .spawn()
             .insert(Parent(chicken))
-            .insert(BobAnim(fastrand::f32() * 32.0))
+            .insert(BobAnim {
+                anim: fastrand::f32() * 32.0,
+            })
             .insert_bundle(SpriteBundle {
                 transform: Transform::default(),
                 texture: asset_server.load("chicken.png"),

@@ -143,11 +143,18 @@ pub(crate) fn cam_movement(
     let mut h = 0.0;
 
     if let Some(wsize) = windows.get_primary() {
-        h = wsize.height() * cam.scale.y;
+        h = wsize.height() * cam.scale.x;
+    }
+
+    let mut bot = -1100.0 + h * 0.5;
+    let mut top = 600.0 - h * 0.5;
+    if top < bot {
+        top = -250.0;
+        bot = -250.0;
     }
 
     cam.translation.x = cam.translation.x.clamp(-1000.0, 1000.0);
-    cam.translation.y = cam.translation.y.clamp(-1100.0, 600.0);
+    cam.translation.y = cam.translation.y.clamp(bot, top);
 
     cam.scale.x = cam.scale.x.clamp(0.01, 2.0);
     cam.scale.y = cam.scale.y.clamp(0.01, 2.0);
