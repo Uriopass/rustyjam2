@@ -95,6 +95,44 @@ pub struct DogChickAnim {
     w: f32,
 }
 
+#[derive(Component)]
+pub struct DespawnIn {
+    until: f64,
+    scale: Option<f32>,
+}
+
+pub fn despawnin(
+    mut commands: Commands,
+    time: Res<Time>,
+    mut qry: Query<(Entity, &mut Transform, &mut DespawnIn)>,
+) {
+    for (ent, mut trans, mut v) in qry.iter_mut() {
+        let diff = (v.until - time.seconds_since_startup()) as f32;
+
+        let scale = match v.scale {
+            None => {
+                v.scale = Some(trans.scale.x);
+                trans.scale.x
+            }
+            Some(x) => x,
+        };
+
+        if diff < 0.1 {
+            trans.scale.x = scale * diff * 10.0;
+            trans.scale.y = scale * diff * 10.0;
+        }
+
+        if diff > 0.8 {
+            trans.scale.x = scale * (1.0 + (diff - 0.8) * 20.0);
+            trans.scale.y = scale * (1.0 + (diff - 0.8) * 20.0);
+        }
+
+        if diff < 0.0 {
+            commands.entity(ent).despawn_recursive();
+        }
+    }
+}
+
 pub fn dogchickanim_update(
     mut commands: Commands,
     asset_server: Res<AssetServer>,
@@ -123,6 +161,7 @@ pub fn collision_avoidance(
     mut commands: Commands,
     time: Res<Time>,
     tree: Res<NNTree>,
+    asset_server: Res<AssetServer>,
     mut toavoid: Query<
         (Entity, &mut CollisionAvoid, &Transform),
         Or<(With<Wolf>, With<Dog>, With<Chicken>, With<DogChick>)>,
@@ -133,6 +172,7 @@ pub fn collision_avoidance(
     ischick: Query<&Chicken>,
     mut islooker: Query<&mut Looker>,
     transqry: Query<&Transform>,
+    childs: Query<&Children>,
 ) {
     for (e, mut avoid, trans) in toavoid.iter_mut() {
         avoid.getaway = Vec2::ZERO;
@@ -203,12 +243,30 @@ pub fn collision_avoidance(
                     Happy => {
                         l.state = Scared {
                             until: time.seconds_since_startup() + 10.0,
-                        }
+                        };
+
+                        let y = if ischick.contains(e) { 30.0 } else { 23.0 };
+                        let x = if ischick.contains(e) { -20.0 } else { -20.0 };
+
+                        commands
+                            .spawn()
+                            .insert(DespawnIn {
+                                until: time.seconds_since_startup() + 1.0,
+                                scale: None,
+                            })
+                            .insert(Parent(childs.get(e).unwrap()[0]))
+                            .insert_bundle(SpriteBundle {
+                                transform: Transform::default()
+                                    .with_translation(Vec3::new(x, y, 0.0))
+                                    .with_scale(vec3(0.32, 0.32, 0.0)),
+                                texture: asset_server.load("scared.png"),
+                                ..Default::default()
+                            });
                     }
                     HappyInside => {
                         l.state = ScaredInside {
                             until: time.seconds_since_startup() + 10.0,
-                        }
+                        };
                     }
                     Scared { .. } => {}
                     ScaredInside { .. } => {}
@@ -435,7 +493,10 @@ pub fn speedbob(
 ) {
     for (speed, children, mut trans, airesult) in qry.iter_mut() {
         for child in children.iter() {
-            let (mut trans, mut bobanim) = bobqry.get_mut(*child).unwrap();
+            let (mut trans, mut bobanim) = match bobqry.get_mut(*child) {
+                Ok(x) => x,
+                Err(_) => continue,
+            };
             bobanim.0 += speed.0 * time.delta_seconds() * 0.3;
             trans.translation.y = bobanim.0.cos() * 6.0;
         }
@@ -448,7 +509,7 @@ pub fn speedbob(
 }
 
 pub fn start_game(mut commands: Commands, asset_server: Res<AssetServer>) {
-    for _ in 0..10 {
+    for _ in 0..200 {
         let x = (-0.5 + fastrand::f32()) * 1000.0;
         let y = fastrand::f32() * 200.0 + 300.0;
 
@@ -483,7 +544,7 @@ pub fn start_game(mut commands: Commands, asset_server: Res<AssetServer>) {
             });
     }
 
-    for _ in 0..100 {
+    for _ in 0..200 {
         let x = -500.0 + (-0.5 + fastrand::f32()) * 300.0;
         let y = fastrand::f32() * 300.0 - 1000.0;
 
@@ -527,7 +588,7 @@ pub fn start_game(mut commands: Commands, asset_server: Res<AssetServer>) {
             });
     }
 
-    for _ in 0..100 {
+    for _ in 0..200 {
         let x = 500.0 + (-0.5 + fastrand::f32()) * 300.0;
         let y = fastrand::f32() * 300.0 - 1000.0;
 
