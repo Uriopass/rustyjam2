@@ -1,5 +1,5 @@
 use crate::entities::{spawn_chicken, spawn_dog, spawn_wolf, start_game};
-use crate::{DespawnQry, Inputs, Score};
+use crate::{DespawnQry, Score};
 use bevy::prelude::*;
 use bevy_egui::egui::Align;
 use bevy_egui::{egui, EguiContext};
@@ -26,7 +26,6 @@ pub(crate) fn ui_example(
     asset_server: Res<AssetServer>,
     mut commands: Commands,
     time: Res<Time>,
-    mut inputs: ResMut<Inputs>,
     mut egui_context: ResMut<EguiContext>,
     mut state: ResMut<GameState>,
     score: Res<Score>,
@@ -45,9 +44,6 @@ pub(crate) fn ui_example(
                             *state = GameState::Playing;
                             start_game(qry, &mut commands, &asset_server, &time);
                         }
-
-                        ui.radio_value(&mut inputs.qwerty, true, "qwerty");
-                        ui.radio_value(&mut inputs.qwerty, false, "azerty");
                     });
                 });
         }
