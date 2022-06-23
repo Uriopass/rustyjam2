@@ -1,5 +1,5 @@
 use bevy::input::keyboard::KeyboardInput;
-use bevy::input::mouse::MouseWheel;
+use bevy::input::mouse::{MouseButtonInput, MouseWheel};
 use bevy::input::ElementState;
 use bevy::prelude::*;
 use bevy::render::camera::Camera2d;
@@ -102,10 +102,11 @@ pub enum Action {
     CamDown,
     Zoom,
     Dezoom,
+    ClickLeft,
 }
 
 pub struct Inputs {
-    just_pressed: HashSet<Action>,
+    pub(crate) just_pressed: HashSet<Action>,
     pressed: HashSet<Action>,
 }
 
@@ -174,6 +175,7 @@ pub(crate) fn input_mapping(
     mut inputs: ResMut<Inputs>,
     mut keyboard_input_events: EventReader<KeyboardInput>,
     mut scroll_evr: EventReader<MouseWheel>,
+    mut buttons_evr: EventReader<MouseButtonInput>,
 ) {
     inputs.just_pressed.clear();
 
@@ -206,6 +208,19 @@ pub(crate) fn input_mapping(
         }
         if v.y < 0.0 {
             inputs.just_pressed.insert(Action::Dezoom);
+        }
+    }
+
+    for v in buttons_evr.iter() {
+        if v.button == MouseButton::Left {
+            if v.state == ElementState::Pressed {
+                inputs.just_pressed.insert(Action::ClickLeft);
+                inputs.pressed.insert(Action::ClickLeft);
+            }
+
+            if v.state == ElementState::Released {
+                inputs.pressed.remove(&Action::ClickLeft);
+            }
         }
     }
 }

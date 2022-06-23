@@ -1,5 +1,5 @@
-use crate::gfx::MouseProj;
-use crate::{Children, Entity, GameState, Parent, Query, Time, Vec2, Vec3, Without};
+use crate::gfx::{Action, MouseProj};
+use crate::{Children, Entity, GameState, Inputs, Parent, Query, Time, Vec2, Vec3, Without};
 use bevy::audio::prelude::*;
 use bevy::audio::AudioSink;
 use bevy::math::{vec2, vec3, Rect, Vec3Swizzles};
@@ -24,9 +24,10 @@ impl Score {
     }
 }
 
-#[derive(Component)]
+#[derive(Component, Default)]
 pub struct Wolf {
     tired_until: f64,
+    scared_until: f64,
 }
 
 #[derive(Component)]
@@ -554,17 +555,22 @@ pub fn wolf_ai(
             }
         }
 
+        let is_tired = wolf.tired_until > time.seconds_since_startup();
+        let is_scared = wolf.scared_until > time.seconds_since_startup();
+
         let objective = match nearest {
-            Some(x)
-                if x.distance(pos) < 600.0 && wolf.tired_until < time.seconds_since_startup() =>
-            {
+            Some(x) if x.distance(pos) < 600.0 && !is_tired && !is_scared => {
                 max_speed = 100.0;
                 x
             }
             _ => {
                 let obj = wander.randobjective.unwrap_or(pos);
-                if obj.distance_squared(pos) > 200.0 * 200.0 {
+                let dist2 = obj.distance_squared(pos);
+                if dist2 > 200.0 * 200.0 {
                     max_speed = 60.0;
+                }
+                if is_scared && dist2 > 20.0 {
+                    max_speed = 180.0;
                 }
                 obj
             }
@@ -745,7 +751,7 @@ pub fn spawn_wolf(commands: &mut Commands, asset_server: &Res<AssetServer>) {
             target_dir: vec2(0.0, 0.0),
         })
         .insert(Speed(0.0))
-        .insert(Wolf { tired_until: 0.0 })
+        .insert(Wolf::default())
         .insert(Wander {
             randobjective: None,
             confined_within: FOREST,
@@ -861,4 +867,29 @@ pub fn spawn_dog(commands: &mut Commands, asset_server: &Res<AssetServer>) {
             texture: asset_server.load("dog.png"),
             ..Default::default()
         });
+}
+
+// Write a system that makes the wolf scared when the user clicks on it
+pub fn wolf_scared(
+    inputs: Res<Inputs>,
+    asset_server: Res<AssetServer>,
+    audio: Res<Audio>,
+    mouse_position: Res<MouseProj>,
+    time: Res<Time>,
+    kd: Res<NNTree>,
+    mut query: Query<&mut Wolf>,
+) {
+    if !inputs.just_pressed.contains(&Action::ClickLeft) {
+        return;
+    }
+
+    for (_, ent) in kd.within_distance(mouse_position.0.extend(0.2), 50.0) {
+        let mut wolf = match query.get_mut(ent) {
+            Ok(wolf) => wolf,
+            Err(_) => continue,
+        };
+
+        wolf.scared_until = time.seconds_since_startup() + 12.0;
+        audio.play(asset_server.load("wolfwhine.ogg"));
+    }
 }

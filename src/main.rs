@@ -40,6 +40,7 @@ fn main() {
         .add_system(entities::wander_update)
         .add_system(entities::dogchickanim_update)
         .add_system(entities::score_merge)
+        .add_system(entities::wolf_scared)
         .add_system(entities::game_over_system)
         .run();
 }
@@ -51,6 +52,7 @@ fn start_background_audio(asset_server: Res<AssetServer>, audio: Res<Audio>) {
     std::mem::forget(asset_server.load::<AudioSource, _>("scared_dog.ogg"));
     std::mem::forget(asset_server.load::<AudioSource, _>("scared_chicken.ogg"));
     std::mem::forget(asset_server.load::<AudioSource, _>("tada.ogg"));
+    std::mem::forget(asset_server.load::<AudioSource, _>("wolfwhine.ogg"));
 
     audio.play_with_settings(
         asset_server.load("I-Knew-a-Guy.ogg"),
