@@ -3,8 +3,8 @@ mod gfx;
 mod ui;
 
 use crate::entities::{
-    ChickenScaredSound, ChickenSound, DogScaredSound, DogSound, MergeSound, SoundState,
-    TrackedByKDTree,
+    ChickenScaredSound, ChickenSound, DespawnQry, DogScaredSound, DogSound, GameOverSound,
+    MergeSound, Score, SoundState, TrackedByKDTree,
 };
 use crate::gfx::Inputs;
 use crate::ui::GameState;
@@ -23,6 +23,7 @@ fn main() {
         .insert_resource(Inputs::default())
         .insert_resource(GameState::Menu)
         .insert_resource(SoundState::default())
+        .insert_resource(Score::new(0.0))
         .add_plugins(DefaultPlugins)
         .add_plugin(EguiPlugin)
         .add_plugin(ShapePlugin)
@@ -32,9 +33,16 @@ fn main() {
         .add_startup_system(start_background_audio)
         .add_startup_system(gfx::gfx_setup)
         .add_startup_system(
-            |commands: Commands, asset_server: Res<AssetServer>, mut state: ResMut<GameState>| {
-                start_game(commands, asset_server);
-                *state = GameState::Playing;
+            |mut commands: Commands,
+             asset_server: Res<AssetServer>,
+             mut state: ResMut<GameState>,
+             qry: DespawnQry,
+             time: Res<Time>| {
+                #[cfg(debug_assertions)]
+                {
+                    start_game(qry, &mut commands, &asset_server, &time);
+                    *state = GameState::Playing;
+                }
             },
         )
         .add_stage_before(CoreStage::Update, UI_EARLY, SystemStage::single_threaded())
@@ -45,6 +53,7 @@ fn main() {
         .add_audio_channel::<ChickenScaredSound>()
         .add_audio_channel::<DogScaredSound>()
         .add_audio_channel::<MergeSound>()
+        .add_audio_channel::<GameOverSound>()
         .add_audio_channel::<DogSound>()
         .add_system(entities::collision_avoidance)
         .add_system(ui::ui_example)
@@ -55,6 +64,8 @@ fn main() {
         .add_system(entities::despawnin)
         .add_system(entities::wander_update)
         .add_system(entities::dogchickanim_update)
+        .add_system(entities::score_merge)
+        .add_system(entities::game_over_system)
         .run();
 }
 

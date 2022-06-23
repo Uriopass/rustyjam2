@@ -1,5 +1,9 @@
 # Chick The Dog
 
+This is a simple game where you have to merge the dogs and the chickens.
+Though beware of the wolves lurking in the forest!  
+They will scare your dogs and chickens and make them run away.
+
 ## Play online
 
 https://uriopass.itch.io/chick-the-dog

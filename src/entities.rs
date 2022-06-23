@@ -1,5 +1,5 @@
 use crate::gfx::MouseProj;
-use crate::{Children, Entity, Parent, Query, Time, Vec2, Vec3, Without};
+use crate::{Children, Entity, GameState, Parent, Query, Time, Vec2, Vec3, Without};
 use bevy::math::{vec2, vec3, Rect, Vec3Swizzles};
 use bevy::prelude::*;
 use bevy_kira_audio::AudioChannel;
@@ -8,8 +8,19 @@ use std::collections::HashSet;
 
 const HAND_SIZE: f32 = 80.0;
 
+#[derive(Default)]
 pub struct Score {
-    score: i64,
+    pub score: i32,
+    pub time_end: f64,
+}
+
+impl Score {
+    pub fn new(start: f64) -> Score {
+        Score {
+            score: 0,
+            time_end: start + 5.0,
+        }
+    }
 }
 
 #[derive(Component)]
@@ -111,6 +122,20 @@ pub struct DespawnIn {
     scale: Option<f32>,
 }
 
+// Write a system that changes the state to gameend when the game is over
+pub fn game_over_system(
+    score: Res<Score>,
+    mut state: ResMut<GameState>,
+    time: Res<Time>,
+    audio: Res<AudioChannel<GameOverSound>>,
+    asset_server: Res<AssetServer>,
+) {
+    if matches!(*state, GameState::Playing) && time.seconds_since_startup() > score.time_end {
+        audio.play(asset_server.load("tada.ogg"));
+        *state = GameState::EndGame;
+    }
+}
+
 pub fn despawnin(
     mut commands: Commands,
     time: Res<Time>,
@@ -143,8 +168,51 @@ pub fn despawnin(
     }
 }
 
+// Add 100 points when any dogs and chickens merge together to the Score resource
+// Spawn a text floating above the added dogchick that says the number of points added using a brown color
+pub fn score_merge(
+    mut commands: Commands,
+    mut score: ResMut<Score>,
+    state: Res<GameState>,
+    asset_server: Res<AssetServer>,
+    time: Res<Time>,
+    qry: Query<Entity, Added<DogChick>>,
+) {
+    if *state != GameState::Playing {
+        return;
+    }
+
+    for ent in qry.iter() {
+        score.score += 100;
+        commands
+            .spawn()
+            .insert_bundle(Text2dBundle {
+                text: Text::with_section(
+                    format!("+100"),
+                    TextStyle {
+                        font: asset_server.load("Roboto-Bold.ttf"),
+                        font_size: 30.0,
+                        color: Color::rgb(0.8, 0.6, 0.3),
+                    },
+                    TextAlignment {
+                        vertical: VerticalAlign::Center,
+                        horizontal: HorizontalAlign::Center,
+                    },
+                ),
+                transform: Transform::from_translation(vec3(00.0, 40.0, 1.0)),
+                ..Default::default()
+            })
+            .insert(Parent(ent))
+            .insert(DespawnIn {
+                until: time.seconds_since_startup() + 1.0,
+                scale: Some(0.5),
+            });
+    }
+}
+
 pub struct ChickenSound;
 pub struct MergeSound;
+pub struct GameOverSound;
 pub struct ChickenScaredSound;
 pub struct DogScaredSound;
 pub struct DogSound;
@@ -159,7 +227,6 @@ pub struct SoundState {
 }
 
 pub fn sound_update(
-    time: Res<Time>,
     hand: Res<MouseProj>,
     mut state: ResMut<SoundState>,
     asset_server: Res<AssetServer>,
@@ -595,10 +662,10 @@ pub fn dogchick_ai(
 
 pub fn speedbob(
     time: Res<Time>,
-    mut qry: Query<(&Speed, &Children, &mut Transform, &AiResult)>,
+    mut qry: Query<(&Speed, &Children, &AiResult)>,
     mut bobqry: Query<(&mut Transform, &mut BobAnim), Without<AiResult>>,
 ) {
-    for (speed, children, mut trans, airesult) in qry.iter_mut() {
+    for (speed, children, airesult) in qry.iter_mut() {
         for child in children.iter() {
             let (mut trans, mut bobanim) = match bobqry.get_mut(*child) {
                 Ok(x) => x,
@@ -606,142 +673,168 @@ pub fn speedbob(
             };
             bobanim.anim += speed.0 * time.delta_seconds() * 0.3;
             trans.translation.y = bobanim.anim.cos() * 6.0;
+            trans.scale.x = if (airesult.target_dir.x > 0.0) != (trans.scale.x < 0.0) {
+                -trans.scale.x
+            } else {
+                trans.scale.x
+            };
         }
-        trans.scale.x = if (airesult.target_dir.x > 0.0) != (trans.scale.x < 0.0) {
-            -trans.scale.x
-        } else {
-            trans.scale.x
-        };
     }
 }
 
-pub fn start_game(mut commands: Commands, asset_server: Res<AssetServer>) {
+pub type DespawnQry<'a, 'b> =
+    Query<'a, 'b, Entity, Or<(With<Dog>, With<DogChick>, With<Wolf>, With<Chicken>)>>;
+
+pub fn start_game(
+    qry: DespawnQry,
+    commands: &mut Commands,
+    asset_server: &Res<AssetServer>,
+    time: &Res<Time>,
+) {
+    commands.insert_resource(Score::new(time.seconds_since_startup()));
+
+    for ent in qry.iter() {
+        commands.entity(ent).despawn_recursive();
+    }
+
     for _ in 0..10 {
-        let x = (-0.5 + fastrand::f32()) * 1000.0;
-        let y = fastrand::f32() * 200.0 + 300.0;
-
-        let wolf = commands
-            .spawn()
-            .insert(AiResult {
-                target_speed: 10.0,
-                target_dir: vec2(0.0, 0.0),
-            })
-            .insert(Speed(0.0))
-            .insert(Wolf { tired_until: 0.0 })
-            .insert(Wander {
-                randobjective: None,
-                confined_within: FOREST,
-            })
-            .insert(CollisionAvoid::default())
-            .insert_bundle(SpriteBundle {
-                transform: Transform::default().with_translation(Vec3::new(x, y, 0.22)),
-                texture: asset_server.load("shadow.png"),
-                ..Default::default()
-            })
-            .insert(TrackedByKDTree)
-            .id();
-        commands
-            .spawn()
-            .insert(Parent(wolf))
-            .insert(BobAnim {
-                anim: fastrand::f32() * 32.0,
-            })
-            .insert_bundle(SpriteBundle {
-                transform: Transform::default().with_scale(Vec3::new(1.0, 1.0, 1.0)),
-                texture: asset_server.load("wolf.png"),
-                ..Default::default()
-            });
+        spawn_wolf(commands, asset_server);
     }
 
-    for _ in 0..100 {
-        let x = -500.0 + (-0.5 + fastrand::f32()) * 300.0;
-        let y = fastrand::f32() * 300.0 - 1000.0;
-
-        let dog = commands
-            .spawn()
-            .insert_bundle(SpriteBundle {
-                transform: Transform::default()
-                    .with_translation(Vec3::new(x, y, 0.22))
-                    .with_scale(vec3(0.5, 0.5, 1.0)),
-                texture: asset_server.load("shadow.png"),
-                ..Default::default()
-            })
-            .insert(Looker {
-                spawn_point: vec2(x, y),
-                spawn_door: vec2(-500.0 + 100.0 * (fastrand::f32() - 0.5), -650.0),
-                state: LookerState::Happy,
-                location: LookerLocation::Inside,
-            })
-            .insert(CollisionAvoid::default())
-            .insert(Wander {
-                randobjective: None,
-                confined_within: OUTSIDE,
-            })
-            .insert(TrackedByKDTree)
-            .insert(AiResult {
-                target_speed: 10.0,
-                target_dir: vec2(0.0, 0.0),
-            })
-            .insert(Speed(0.0))
-            .insert(Dog)
-            .id();
-
-        commands
-            .spawn()
-            .insert(Parent(dog))
-            .insert(BobAnim {
-                anim: fastrand::f32() * 32.0,
-            })
-            .insert_bundle(SpriteBundle {
-                transform: Transform::default(),
-                texture: asset_server.load("dog.png"),
-                ..Default::default()
-            });
+    for _ in 0..70 {
+        spawn_dog(commands, asset_server);
     }
 
-    for _ in 0..100 {
-        let x = 500.0 + (-0.5 + fastrand::f32()) * 300.0;
-        let y = fastrand::f32() * 300.0 - 1000.0;
-
-        let chicken = commands
-            .spawn()
-            .insert_bundle(SpriteBundle {
-                transform: Transform::default()
-                    .with_translation(Vec3::new(x, y, 0.22))
-                    .with_scale(vec3(0.3, 0.3, 1.0)),
-                texture: asset_server.load("shadow.png"),
-                ..Default::default()
-            })
-            .insert(Looker {
-                spawn_point: vec2(x, y),
-                spawn_door: vec2(500.0 + 100.0 * (fastrand::f32() - 0.5), -650.0),
-                state: LookerState::Happy,
-                location: LookerLocation::Inside,
-            })
-            .insert(CollisionAvoid::default())
-            .insert(Wander {
-                randobjective: None,
-                confined_within: OUTSIDE,
-            })
-            .insert(TrackedByKDTree)
-            .insert(AiResult {
-                target_speed: 10.0,
-                target_dir: vec2(0.0, 0.0),
-            })
-            .insert(Speed(0.0))
-            .insert(Chicken)
-            .id();
-
-        commands
-            .spawn()
-            .insert(Parent(chicken))
-            .insert(BobAnim {
-                anim: fastrand::f32() * 32.0,
-            })
-            .insert_bundle(SpriteBundle {
-                transform: Transform::default(),
-                texture: asset_server.load("chicken.png"),
-                ..Default::default()
-            });
+    for _ in 0..70 {
+        spawn_chicken(commands, asset_server);
     }
+}
+
+pub fn spawn_wolf(commands: &mut Commands, asset_server: &Res<AssetServer>) {
+    let x = (-0.5 + fastrand::f32()) * 1000.0;
+    let y = fastrand::f32() * 200.0 + 300.0;
+
+    let wolf = commands
+        .spawn()
+        .insert(AiResult {
+            target_speed: 10.0,
+            target_dir: vec2(0.0, 0.0),
+        })
+        .insert(Speed(0.0))
+        .insert(Wolf { tired_until: 0.0 })
+        .insert(Wander {
+            randobjective: None,
+            confined_within: FOREST,
+        })
+        .insert(CollisionAvoid::default())
+        .insert_bundle(SpriteBundle {
+            transform: Transform::default().with_translation(Vec3::new(x, y, 0.22)),
+            texture: asset_server.load("shadow.png"),
+            ..Default::default()
+        })
+        .insert(TrackedByKDTree)
+        .id();
+    commands
+        .spawn()
+        .insert(Parent(wolf))
+        .insert(BobAnim {
+            anim: fastrand::f32() * 32.0,
+        })
+        .insert_bundle(SpriteBundle {
+            transform: Transform::default().with_scale(Vec3::new(1.0, 1.0, 1.0)),
+            texture: asset_server.load("wolf.png"),
+            ..Default::default()
+        });
+}
+
+pub fn spawn_chicken(commands: &mut Commands, asset_server: &Res<AssetServer>) {
+    let x = 500.0 + (-0.5 + fastrand::f32()) * 300.0;
+    let y = fastrand::f32() * 300.0 - 1000.0;
+
+    let chicken = commands
+        .spawn()
+        .insert_bundle(SpriteBundle {
+            transform: Transform::default()
+                .with_translation(Vec3::new(x, y, 0.22))
+                .with_scale(vec3(0.3, 0.3, 1.0)),
+            texture: asset_server.load("shadow.png"),
+            ..Default::default()
+        })
+        .insert(Looker {
+            spawn_point: vec2(x, y),
+            spawn_door: vec2(500.0 + 100.0 * (fastrand::f32() - 0.5), -650.0),
+            state: LookerState::Happy,
+            location: LookerLocation::Inside,
+        })
+        .insert(CollisionAvoid::default())
+        .insert(Wander {
+            randobjective: None,
+            confined_within: OUTSIDE,
+        })
+        .insert(TrackedByKDTree)
+        .insert(AiResult {
+            target_speed: 10.0,
+            target_dir: vec2(0.0, 0.0),
+        })
+        .insert(Speed(0.0))
+        .insert(Chicken)
+        .id();
+
+    commands
+        .spawn()
+        .insert(Parent(chicken))
+        .insert(BobAnim {
+            anim: fastrand::f32() * 32.0,
+        })
+        .insert_bundle(SpriteBundle {
+            transform: Transform::default(),
+            texture: asset_server.load("chicken.png"),
+            ..Default::default()
+        });
+}
+
+pub fn spawn_dog(commands: &mut Commands, asset_server: &Res<AssetServer>) {
+    let x = -500.0 + (-0.5 + fastrand::f32()) * 300.0;
+    let y = fastrand::f32() * 300.0 - 1000.0;
+
+    let dog = commands
+        .spawn()
+        .insert_bundle(SpriteBundle {
+            transform: Transform::default()
+                .with_translation(Vec3::new(x, y, 0.22))
+                .with_scale(vec3(0.5, 0.5, 1.0)),
+            texture: asset_server.load("shadow.png"),
+            ..Default::default()
+        })
+        .insert(Looker {
+            spawn_point: vec2(x, y),
+            spawn_door: vec2(-500.0 + 100.0 * (fastrand::f32() - 0.5), -650.0),
+            state: LookerState::Happy,
+            location: LookerLocation::Inside,
+        })
+        .insert(CollisionAvoid::default())
+        .insert(Wander {
+            randobjective: None,
+            confined_within: OUTSIDE,
+        })
+        .insert(TrackedByKDTree)
+        .insert(AiResult {
+            target_speed: 10.0,
+            target_dir: vec2(0.0, 0.0),
+        })
+        .insert(Speed(0.0))
+        .insert(Dog)
+        .id();
+
+    commands
+        .spawn()
+        .insert(Parent(dog))
+        .insert(BobAnim {
+            anim: fastrand::f32() * 32.0,
+        })
+        .insert_bundle(SpriteBundle {
+            transform: Transform::default(),
+            texture: asset_server.load("dog.png"),
+            ..Default::default()
+        });
 }
