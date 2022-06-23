@@ -101,11 +101,20 @@ pub enum Action {
     Dezoom,
 }
 
-#[derive(Default)]
 pub struct Inputs {
     just_pressed: HashSet<Action>,
     pressed: HashSet<Action>,
-    qwerty: bool,
+    pub qwerty: bool,
+}
+
+impl Default for Inputs {
+    fn default() -> Self {
+        Inputs {
+            just_pressed: HashSet::new(),
+            pressed: HashSet::new(),
+            qwerty: true,
+        }
+    }
 }
 
 pub(crate) fn cam_movement(
