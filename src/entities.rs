@@ -1,8 +1,9 @@
 use crate::gfx::MouseProj;
 use crate::{Children, Entity, GameState, Parent, Query, Time, Vec2, Vec3, Without};
+use bevy::audio::prelude::*;
+use bevy::audio::AudioSink;
 use bevy::math::{vec2, vec3, Rect, Vec3Swizzles};
 use bevy::prelude::*;
-use bevy_kira_audio::AudioChannel;
 use bevy_spatial::{KDTreeAccess2D, SpatialAccess};
 use std::collections::HashSet;
 
@@ -18,7 +19,7 @@ impl Score {
     pub fn new(start: f64) -> Score {
         Score {
             score: 0,
-            time_end: start + 5.0,
+            time_end: start + 300.0,
         }
     }
 }
@@ -127,7 +128,7 @@ pub fn game_over_system(
     score: Res<Score>,
     mut state: ResMut<GameState>,
     time: Res<Time>,
-    audio: Res<AudioChannel<GameOverSound>>,
+    audio: Res<Audio>,
     asset_server: Res<AssetServer>,
 ) {
     if matches!(*state, GameState::Playing) && time.seconds_since_startup() > score.time_end {
@@ -210,17 +211,13 @@ pub fn score_merge(
     }
 }
 
-pub struct ChickenSound;
-pub struct MergeSound;
-pub struct GameOverSound;
-pub struct ChickenScaredSound;
-pub struct DogScaredSound;
-pub struct DogSound;
-
 #[derive(Default)]
 pub struct SoundState {
     new_scared_chicken: bool,
     new_scared_dog: bool,
+
+    clear_chick: Option<Handle<AudioSink>>,
+    clear_dog: Option<Handle<AudioSink>>,
 
     hand_state_chick: HashSet<Entity>,
     hand_state_dog: HashSet<Entity>,
@@ -230,24 +227,43 @@ pub fn sound_update(
     hand: Res<MouseProj>,
     mut state: ResMut<SoundState>,
     asset_server: Res<AssetServer>,
-    chicken: Res<AudioChannel<ChickenSound>>,
-    chickenscared: Res<AudioChannel<ChickenScaredSound>>,
-    dogscared: Res<AudioChannel<DogScaredSound>>,
-    dogssound: Res<AudioChannel<DogSound>>,
+    audio: Res<Audio>,
+    audio_sinks: Res<Assets<AudioSink>>,
     chicks: Query<(Entity, &Transform, &Looker), With<Chicken>>,
     dogs: Query<(Entity, &Transform, &Looker), With<Dog>>,
 ) {
+    if let Some(h) = &state.clear_chick {
+        if let Some(x) = audio_sinks.get(h) {
+            x.play();
+        }
+    }
+    if let Some(h) = &state.clear_dog {
+        if let Some(x) = audio_sinks.get(h) {
+            x.play();
+        }
+    }
+
     if state.new_scared_chicken {
-        chickenscared.stop();
-        chickenscared.resume();
-        chickenscared.play(asset_server.load("scared_chicken.ogg"));
+        if let Some(h) = &state.clear_chick {
+            if let Some(x) = audio_sinks.get(h) {
+                x.stop();
+            }
+        }
+        let wh = audio.play(asset_server.load("scared_chicken.ogg"));
+        let sh = audio_sinks.get_handle(wh);
+        state.clear_chick = Some(sh);
         state.new_scared_chicken = false;
     }
 
     if state.new_scared_dog {
-        dogscared.stop();
-        dogscared.resume();
-        dogscared.play(asset_server.load("scared_dog.ogg"));
+        if let Some(h) = &state.clear_dog {
+            if let Some(x) = audio_sinks.get(h) {
+                x.stop();
+            }
+        }
+        let wh = audio.play(asset_server.load("scared_dog.ogg"));
+        let sh = audio_sinks.get_handle(wh);
+        state.clear_dog = Some(sh);
         state.new_scared_dog = false;
     }
     let mut already = false;
@@ -262,10 +278,14 @@ pub fn sound_update(
             if !already {
                 if state.hand_state_chick.insert(ent) {
                     already = true;
-                    //chicken.stop();
-                    //chicken.resume();
-                    chicken.play(asset_server.load("chicken1.ogg"));
-                    chicken.set_playback_rate(fastrand::f32() * 0.3 + 1.0);
+                    audio.play_with_settings(
+                        asset_server.load("chicken1.ogg"),
+                        PlaybackSettings {
+                            repeat: false,
+                            volume: 1.0,
+                            speed: fastrand::f32() * 0.3 + 1.0,
+                        },
+                    );
                 }
             }
         }
@@ -285,10 +305,14 @@ pub fn sound_update(
             if !already {
                 if state.hand_state_dog.insert(ent) {
                     already = true;
-                    //dogssound.stop();
-                    //dogssound.resume();
-                    dogssound.play(asset_server.load("dogbark1.ogg"));
-                    dogssound.set_playback_rate(fastrand::f32() * 0.3 + 1.0)
+                    audio.play_with_settings(
+                        asset_server.load("dogbark1.ogg"),
+                        PlaybackSettings {
+                            repeat: false,
+                            volume: 1.0,
+                            speed: fastrand::f32() * 0.3 + 1.0,
+                        },
+                    );
                 }
             }
         }
@@ -324,7 +348,7 @@ pub fn collision_avoidance(
     mut commands: Commands,
     time: Res<Time>,
     tree: Res<NNTree>,
-    mergesound: Res<AudioChannel<MergeSound>>,
+    audio: Res<Audio>,
     mut soundstate: ResMut<SoundState>,
     asset_server: Res<AssetServer>,
     mut toavoid: Query<
@@ -363,7 +387,7 @@ pub fn collision_avoidance(
                 && (isdog.contains(e) && ischick.contains(e2)
                     || isdog.contains(e2) && ischick.contains(e))
             {
-                mergesound.play(asset_server.load("merge.ogg"));
+                audio.play(asset_server.load("merge.ogg"));
                 merged.push(e);
                 merged.push(e2);
 

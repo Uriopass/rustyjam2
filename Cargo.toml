@@ -7,10 +7,8 @@ license = "MIT"
 
 [dependencies]
 bevy_egui = "0.14"
-bevy_prototype_lyon = "0.5.0"
 fastrand = "1.7.0"
 bevy_spatial = { version = "0.1.1", features=["kdtree"] }
-bevy_kira_audio = "0.10.0"
 
 [dependencies.bevy]
 version = "0.7.0"
@@ -18,11 +16,13 @@ default-features = false
 features = [
     "bevy_sprite",
     "bevy_render",
+    "bevy_audio",
     "bevy_winit",
     "x11",
     "bevy_text",
     "jpeg",
-    "png"
+    "png",
+    "vorbis"
 ]
 
 [profile.dev.package."*"]
