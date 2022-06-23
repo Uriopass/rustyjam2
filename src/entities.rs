@@ -731,11 +731,11 @@ pub fn start_game(
         spawn_wolf(commands, asset_server);
     }
 
-    for _ in 0..70 {
+    for _ in 0..90 {
         spawn_dog(commands, asset_server);
     }
 
-    for _ in 0..70 {
+    for _ in 0..90 {
         spawn_chicken(commands, asset_server);
     }
 }
