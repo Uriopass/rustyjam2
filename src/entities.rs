@@ -19,7 +19,7 @@ impl Score {
     pub fn new(start: f64) -> Score {
         Score {
             score: 0,
-            time_end: start + 300.0,
+            time_end: start + 100.0,
         }
     }
 }
@@ -534,7 +534,7 @@ pub fn wolf_ai(
     mut targets: Query<(&Transform, &Looker), (Without<Wolf>, Or<(With<Dog>, With<Chicken>)>)>,
 ) {
     for (mut trans, mut wolf, wander, avoid, mut res, mut speed) in qry.iter_mut() {
-        let mut max_speed = 20.0_f32;
+        let mut max_speed = 40.0_f32;
         let pos = trans.translation.xy();
 
         let mut nearest = None;
@@ -563,7 +563,7 @@ pub fn wolf_ai(
             }
             _ => {
                 let obj = wander.randobjective.unwrap_or(pos);
-                if obj.distance_squared(pos) > 300.0 * 300.0 {
+                if obj.distance_squared(pos) > 200.0 * 200.0 {
                     max_speed = 60.0;
                 }
                 obj

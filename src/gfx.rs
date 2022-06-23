@@ -9,7 +9,10 @@ use std::collections::HashSet;
 pub(crate) struct Yoo;
 
 pub(crate) fn gfx_setup(mut commands: Commands, asset_server: Res<AssetServer>) {
-    commands.spawn_bundle(OrthographicCameraBundle::new_2d());
+    let mut b = OrthographicCameraBundle::new_2d();
+    b.transform.scale.x = 2.0;
+    b.transform.scale.y = 2.0;
+    commands.spawn_bundle(b);
 
     commands.spawn().insert_bundle(SpriteBundle {
         sprite: Sprite {
