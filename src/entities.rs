@@ -6,6 +6,7 @@ use bevy::math::{vec2, vec3, Rect, Vec3Swizzles};
 use bevy::prelude::*;
 use bevy_spatial::{KDTreeAccess2D, SpatialAccess};
 use std::collections::HashSet;
+use std::sync::Mutex;
 
 const HAND_SIZE: f32 = 80.0;
 
@@ -134,7 +135,14 @@ pub fn game_over_system(
 ) {
     if matches!(*state, GameState::Playing) && time.seconds_since_startup() > score.time_end {
         audio.play(asset_server.load("tada.ogg"));
-        *state = GameState::EndGame;
+        *state = GameState::EndGame {
+            score_sent: false,
+            leaderboard_load: false,
+            finished_loading: Default::default(),
+            finished_sending: Default::default(),
+            username: "".to_string(),
+            leaderboard_result: Mutex::new(vec![]),
+        }
     }
 }
 
@@ -180,7 +188,7 @@ pub fn score_merge(
     time: Res<Time>,
     qry: Query<Entity, Added<DogChick>>,
 ) {
-    if *state != GameState::Playing {
+    if !matches!(*state, GameState::Playing) {
         return;
     }
 
