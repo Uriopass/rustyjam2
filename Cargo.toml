@@ -9,6 +9,7 @@ license = "MIT"
 bevy_egui = "0.14"
 fastrand = "1.7.0"
 bevy_spatial = { version = "0.1.1", features=["kdtree"] }
+ehttp = "0.2.0"
 
 [dependencies.bevy]
 version = "0.7.0"

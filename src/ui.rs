@@ -28,7 +28,7 @@ pub(crate) fn ui_example(
     time: Res<Time>,
     mut egui_context: ResMut<EguiContext>,
     mut state: ResMut<GameState>,
-    score: Res<Score>,
+    mut score: ResMut<Score>,
     qry: DespawnQry,
 ) {
     match *state {
@@ -42,7 +42,7 @@ pub(crate) fn ui_example(
                     ui.vertical_centered(|ui| {
                         if ui.button("Start Game").clicked() {
                             *state = GameState::Playing;
-                            start_game(qry, &mut commands, &asset_server, &time);
+                            start_game(qry, &mut commands, &asset_server, &time, &mut score);
                         }
                     });
                 });
@@ -71,7 +71,7 @@ pub(crate) fn ui_example(
                 .show(egui_context.ctx_mut(), |ui| {
                     if ui.button("Restart").clicked() {
                         *state = GameState::Playing;
-                        start_game(qry, &mut commands, &asset_server, &time);
+                        start_game(qry, &mut commands, &asset_server, &time, &mut score);
                     }
 
                     if ui.button("More chickens & dogs").clicked() {
@@ -101,7 +101,7 @@ pub(crate) fn ui_example(
 
                         if ui.button("Restart").clicked() {
                             *state = GameState::Playing;
-                            start_game(qry, &mut commands, &asset_server, &time);
+                            start_game(qry, &mut commands, &asset_server, &time, &mut score);
                         }
 
                         if ui.button("Continue playing").clicked() {

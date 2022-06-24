@@ -720,8 +720,9 @@ pub fn start_game(
     commands: &mut Commands,
     asset_server: &Res<AssetServer>,
     time: &Res<Time>,
+    score: &mut Score,
 ) {
-    commands.insert_resource(Score::new(time.seconds_since_startup()));
+    *score = Score::new(time.seconds_since_startup());
 
     for ent in qry.iter() {
         commands.entity(ent).despawn_recursive();
