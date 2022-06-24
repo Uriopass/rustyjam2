@@ -16,7 +16,11 @@ fn main() {
     App::new()
         .insert_resource(Msaa { samples: 4 })
         .insert_resource(Inputs::default())
-        .insert_resource(GameState::Menu)
+        .insert_resource(GameState::Menu {
+            leaderboard_load: false,
+            finished_loading: default(),
+            leaderboard_result: default(),
+        })
         .insert_resource(SoundState::default())
         .insert_resource(Score::new(0.0))
         .add_plugins(DefaultPlugins)
