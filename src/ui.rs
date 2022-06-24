@@ -286,10 +286,11 @@ pub(crate) fn ui_example(
                                     score.score as f64, &username
                                 );
 
-                                let request = ehttp::Request::post(
+                                let mut request = ehttp::Request::post(
                                     "https://leaderboard.douady.paris/api/score",
                                     formatted_json.into(),
                                 );
+                                request.headers.insert("Content-Type".to_string(), "application/json".to_string());
                                 let cpy = finished_sending.clone();
                                 let cpye = error.clone();
                                 ehttp::fetch(request, move |result: ehttp::Result<ehttp::Response>| {
